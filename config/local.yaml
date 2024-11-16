@@ -1,0 +1,25 @@
+log: "local"
+env: "dev"
+
+postgres:
+  host: "postgres"
+  port: 5432
+  user: "user"
+  password: "secret"
+  db_name: "bank"
+
+rabbitmq:
+  host: "rabbitmq"
+  port: 5672
+  user: "user"
+  password: "secret"
+
+rest:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 10s
+
+mock_db:
+  user_count: 10
+  msg_count: 10
