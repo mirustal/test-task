@@ -25,10 +25,9 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Storage, e
 	log = log.With(slog.String("op", op))
 
 	url := dbStringConverter(cfg)
-
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
-		log.Error("can`t connect to db: ", "err", err)
+		log.Error("can`t connect db: ", "err", err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 

@@ -1,17 +1,18 @@
-version: '3.8'
+version: '3.9'
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:14.8-alpine3.18
     container_name: postgres
     environment:
+      POSTGRES_USER: bank-user
+      POSTGRES_PASSWORD: secretpass
       POSTGRES_DB: bank
-      POSTGRES_USER: bank_user
-      POSTGRES_PASSWORD: secret
     ports:
       - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - ../2. Init Database:/docker-entrypoint-initdb.d
+      - postgres-data:/var/lib/postgresql/data
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -31,7 +32,21 @@ services:
       - postgres
       - rabbitmq
     ports:
-      - "8080:8080" 
+      - "8080:8080"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
 volumes:
-  pg_data:
+  postgres-data:
+  pgadmin_data:

@@ -12,7 +12,7 @@ type Config struct {
 	LogType  string         `yaml:"log"`
 	Env      string         `yaml:"env"`
 	Postgres PostgresConfig `yaml:"postgres"`
-	Rabbitmq   RabbitConfig   `yaml:"rabbitmq`
+	Rabbitmq   RabbitConfig  `yaml:"rabbitmq`
 	REST     REST           `yaml:"rest"`
 	MockDB   MockDB         `yaml:"mock_db"`
 }

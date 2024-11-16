@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"bank-service/internal/adapter/db/postgres"
 	"bank-service/internal/config"
 	"bank-service/internal/logger"
 )
@@ -14,16 +15,21 @@ func main() {
 
 	cfg := config.MustLoad()
 
-	log := logger.SetupLogger(cfg.LogType)
-	println(ctx, log)
+	mylog := logger.SetupLogger(cfg.LogType)
+	storage, err := postgres.New(ctx, cfg, mylog)
+	if err != nil {
+		log.Fatal("failed to coonect db")
+	}
+	defer storage.Close(ctx)
+
 	printConfig(cfg)
 }
 
 func printConfig(cfg *config.Config) {
-	time.Sleep(5 * time.Second) // Имитация задержки, если нужно подождать инициализации
+	time.Sleep(3 * time.Second) 
 
 	log.Println("---------------------------------------")
-	log.Println("Starting application with configuration:")
+	log.Println("Starting service:")
 	log.Printf("Environment: %s \tLog level: %s\n", cfg.Env, cfg.LogType)
 	log.Printf("Postgres: %s:%d \tDB: %s \tUser: %s\n", cfg.Postgres.Host, cfg.Postgres.Port, cfg.Postgres.DBName, cfg.Postgres.User)
 	log.Printf("RabbitMQ: %s:%d \tUser: %s\n", cfg.Rabbitmq.Host, cfg.Rabbitmq.Port, cfg.Rabbitmq.User)

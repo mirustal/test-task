@@ -4,8 +4,8 @@ env: "dev"
 postgres:
   host: "postgres"
   port: 5432
-  user: "user"
-  password: "secret"
+  user: "bank-user"
+  password: "secretpass"
   db_name: "bank"
 
 rabbitmq:

@@ -25,5 +25,6 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY .env .
 COPY config config
+COPY db db
 
 CMD ["./main"]
