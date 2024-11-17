@@ -3,4 +3,7 @@ migrationUp:
 
 serviceUp:
 	docker-compose down
-	docker-compose up --build
+	docker-compose up -d
+
+serviceRestart:
+	docker-compose up --build --no-deps bank_service
