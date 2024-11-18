@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"bank-service/internal/adapter/broker/rabbit"
 	"bank-service/internal/adapter/db/postgres"
 	"bank-service/internal/api"
 	"bank-service/internal/modules/client"
@@ -21,20 +22,23 @@ func main() {
 
 	ctx := context.Background()
 
+
 	mylog := logger.SetupLogger(cfg.LogType)
 
-	storage, err := postgres.New(ctx, cfg, mylog)
+	storageDB, err := postgres.New(ctx, cfg, mylog)
 	if err != nil {
 		log.Fatal("failed to coonect db")
 	}
-	defer storage.Close(ctx)
-	if err := mockdb.SeedDataBase(ctx, storage); err != nil {
+	defer storageDB.Close(ctx)
+
+	if err := mockdb.SeedDataBase(ctx, storageDB); err != nil {
 		mylog.Error("can't create mock for DB")
 	}
 	
+	storageRabbit, err := rabbit.NewMessageQueue(ctx, cfg, mylog)
 
-	clService := client.New(mylog, storage, storage)
-	trService := transaction.New(mylog, storage, storage)
+	clService := client.New(mylog, storageDB, storageDB)
+	trService := transaction.New(mylog, storageDB, storageDB, storageRabbit, storageDB)
 
 	app := api.NewRouter(cfg, mylog, clService, trService)
 	app.Listen(fmt.Sprintf(":%d", cfg.REST.Port))

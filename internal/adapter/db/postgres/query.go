@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -51,9 +53,115 @@ func (pg *Storage) GetClient(ctx context.Context, clientID int) (models.Client, 
 	return client, nil
 }
 
+func (pg *Storage) GetClientBalance(ctx context.Context, clientID int) (float64, error) {
+	const op = "postgres.GetClientBalance"
+
+	query := `
+        SELECT balance
+        FROM clients
+        WHERE id = $1;
+    `
+	var balance float64
+	err := pg.db.QueryRow(ctx, query, clientID).Scan(&balance)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return 0, fmt.Errorf("%s: client not found: %w", op, err)
+		}
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+	return balance, nil
+}
+
+func (pg *Storage) ProcessTransaction(ctx context.Context, transaction models.Transaction) error {
+	const op = "postgres.ProcessTransaction"
+
+	log := pg.log.With(slog.String("op", op))
+
+	tx, err := pg.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: failed to begin transaction: %w", op, err)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		} else if err != nil {
+			tx.Rollback(ctx)
+		} else {
+			err = tx.Commit(ctx)
+		}
+	}()
+
+	var fromBalance float64
+	err = tx.QueryRow(ctx, `
+		SELECT balance
+		FROM clients
+		WHERE id = $1
+		FOR UPDATE;
+	`, transaction.FromClientID).Scan(&fromBalance)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if fromBalance < transaction.Amount {
+		_, err = tx.Exec(ctx, `
+			UPDATE transactions
+			SET status = 'failed'
+			WHERE id = $1;
+		`, transaction.ID)
+		if err != nil {
+			return fmt.Errorf("%s: %w", op, err)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE clients
+		SET balance = balance - $1
+		WHERE id = $2;
+	`, transaction.Amount, transaction.FromClientID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE clients
+		SET balance = balance + $1
+		WHERE id = $2;
+	`, transaction.Amount, transaction.ToClientID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE transactions
+		SET status = 'completed', processed_at = NOW()
+		WHERE id = $1;
+	`, transaction.ID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			log.Error("Transaction panicked", "err", p)
+			tx.Rollback(ctx)
+		} else if err != nil {
+			log.Error("Transaction failed", "err", err)
+			tx.Rollback(ctx)
+		} else {
+			log.Info("Transaction committed successfully")
+			err = tx.Commit(ctx)
+		}
+	}()
+
+	return nil
+}
+
 func (pg *Storage) AddTransaction(ctx context.Context, transaction models.Transaction) (int, error) {
 	const op = "postgres.AddTransaction"
 
+	transaction.Status = "pending"
 	query := `
         INSERT INTO transactions (from_client_id, to_client_id, amount, status, created_at)
         VALUES ($1, $2, $3, $4, NOW())
@@ -133,6 +241,7 @@ func (pg *Storage) GetTransaction(ctx context.Context, transactionID int) (model
         WHERE id = $1
     `
 
+	var processedTime *time.Time
 	err := pg.db.QueryRow(ctx, query, transactionID).Scan(
 		&transaction.ID,
 		&transaction.FromClientID,
@@ -140,8 +249,11 @@ func (pg *Storage) GetTransaction(ctx context.Context, transactionID int) (model
 		&transaction.Amount,
 		&transaction.Status,
 		&transaction.CreatedAt,
-		&transaction.ProcessedAt,
+		&processedTime,
 	)
+	if processedTime != nil {
+		transaction.ProcessedAt = *processedTime
+	}
 
 	if err == pgx.ErrNoRows {
 		return transaction, fmt.Errorf("client with id %d not found", transactionID)
@@ -150,6 +262,49 @@ func (pg *Storage) GetTransaction(ctx context.Context, transactionID int) (model
 	}
 
 	return transaction, nil
+}
+
+func (pg *Storage) GetTransactionsByStatus(ctx context.Context, status string) ([]models.Transaction, error) {
+	const op = "postgres.GetTransactionByStatus"
+
+	query := `
+        SELECT id, from_client_id, to_client_id, amount, status, created_at, processed_at
+        FROM transactions
+        WHERE status = $1;
+    `
+	rows, err := pg.db.Query(ctx, query, status)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	var processedTime *time.Time
+	var transactions []models.Transaction
+	for rows.Next() {
+		var t models.Transaction
+		err := rows.Scan(
+			&t.ID,
+			&t.FromClientID,
+			&t.ToClientID,
+			&t.Amount,
+			&t.Status,
+			&t.CreatedAt,
+			&processedTime,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
+		}
+		if processedTime != nil {
+			t.ProcessedAt = *processedTime
+		}
+		transactions = append(transactions, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return transactions, nil
 }
 
 func (pg *Storage) GetTransactionsByStatusAndClientID(ctx context.Context, clientID int, status string) ([]models.Transaction, error) {
@@ -166,6 +321,7 @@ func (pg *Storage) GetTransactionsByStatusAndClientID(ctx context.Context, clien
 	}
 	defer rows.Close()
 
+	var processedTime *time.Time
 	var transactions []models.Transaction
 	for rows.Next() {
 		var t models.Transaction
@@ -176,10 +332,13 @@ func (pg *Storage) GetTransactionsByStatusAndClientID(ctx context.Context, clien
 			&t.Amount,
 			&t.Status,
 			&t.CreatedAt,
-			&t.ProcessedAt,
+			&processedTime,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", op, err)
+		}
+		if processedTime != nil {
+			t.ProcessedAt = *processedTime
 		}
 		transactions = append(transactions, t)
 	}

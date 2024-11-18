@@ -6,14 +6,18 @@ import (
 )
 
 func SetupLogger(env string) *slog.Logger {
-	var log *slog.Logger
-
+	var level slog.Level
 	switch env {
 	case "local":
-		log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		level = slog.LevelDebug
 	case "dev":
-		log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		level = slog.LevelInfo
+	default:
+		level = slog.LevelWarn
 	}
 
-	return log
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	logger.Info("Logger initialized", "environment", env, "level", level.String())
+	return logger
 }
+

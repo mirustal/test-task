@@ -1,5 +1,4 @@
-log: "local"
-env: "dev"
+log: "dev"
 
 postgres:
   host: "postgres"

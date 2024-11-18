@@ -2,6 +2,7 @@ package api
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -19,7 +20,10 @@ func NewRouter(cfg *config.Config, log *slog.Logger, clService *client.Client, t
 
 	app.Use(LoggerMiddleware(log))
 	app.Use(compress.New())
-	app.Use(limiter.New())
+	app.Use(limiter.New(limiter.Config{
+		Max:        20, 
+		Expiration: 1 * time.Minute, // интервал времени
+	}))
 
 	api := app.Group("/api")
 
@@ -31,22 +35,26 @@ func NewRouter(cfg *config.Config, log *slog.Logger, clService *client.Client, t
 		return AddClientHandler(c, clService)
 	})
 
-	trGroup := api.Group("/transactions")
+	trGroup := api.Group("/transaction")
 	trGroup.Get("/:id", func(c *fiber.Ctx) error {
 		return GetTransactionHandler(c, trService)
 	})
-	trGroup.Post("", func(c *fiber.Ctx) error {
-		return AddTransactionHandler(c, trService)
+	trGroup.Get("/status/:id", func(c *fiber.Ctx) error {
+		return GetTransactionsByStatusAndIDHandler(c, trService)
 	})
-	trGroup.Get("/:id", func(c *fiber.Ctx) error {
-		return GetClientTransactionsHandler(c, trService)
-	})
-	trGroup.Get("/idstatus/:id:status", func(c *fiber.Ctx) error {
+	trGroup.Get("/", func(c *fiber.Ctx) error {
 		return GetTransactionsByStatusHandler(c, trService)
 	})
-	trGroup.Get("/status/:id", func(c *fiber.Ctx) error {
+	trGroup.Post("/", func(c *fiber.Ctx) error {
+		return AddTransactionHandler(c, trService)
+	})
+	trGroup.Post("/transfer", func(c *fiber.Ctx) error {
+		return TransferMoneyHandler(c, trService)
+	})
+	trGroup.Post("/:id", func(c *fiber.Ctx) error {
 		return UpdateTransactionStatusHandler(c, trService)
 	})
+
 
 	return app
 }

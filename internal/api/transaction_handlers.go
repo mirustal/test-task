@@ -44,7 +44,7 @@ func AddTransactionHandler(c *fiber.Ctx, trService *transaction.TransactionServi
 }
 
 func GetClientTransactionsHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
-	clientIDStr := c.Params("client_id")
+	clientIDStr := c.Params("id")
 
 	clientID, err := strconv.Atoi(clientIDStr)
 	if err != nil || clientID <= 0 {
@@ -59,9 +59,10 @@ func GetClientTransactionsHandler(c *fiber.Ctx, trService *transaction.Transacti
 	return c.Status(200).JSON(transactions)
 }
 
-func GetTransactionsByStatusHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
-	clientIDStr := c.Params("client_id")
-	status := c.Params("status")
+func GetTransactionsByStatusAndIDHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
+	clientIDStr := c.Params("id")
+	status := c.Query("status", "completed")
+
 
 	clientID, err := strconv.Atoi(clientIDStr)
 	if err != nil || clientID <= 0 {
@@ -80,9 +81,25 @@ func GetTransactionsByStatusHandler(c *fiber.Ctx, trService *transaction.Transac
 	return c.Status(200).JSON(transactions)
 }
 
+func GetTransactionsByStatusHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
+	status := c.Query("status", "completed")
+	
+
+	if status == "" {
+		return c.Status(400).SendString("Invalid parameter: status is required")
+	}
+
+	transactions, err := trService.GetTransactionsByStatus(c.Context(), status)
+	if err != nil {
+		return c.Status(500).SendString("Error retrieving transactions")
+	}
+
+	return c.Status(200).JSON(transactions)
+}
+
 func UpdateTransactionStatusHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
 	idStr := c.Params("id")
-	status := c.Params("status")
+	status := c.Query("status", "completed")
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil || id <= 0 {
@@ -98,7 +115,28 @@ func UpdateTransactionStatusHandler(c *fiber.Ctx, trService *transaction.Transac
 		return c.Status(500).SendString("Error updating transaction status")
 	}
 
-	return c.SendStatus(204)
+	return c.SendStatus(200)
+}
+
+func TransferMoneyHandler(c *fiber.Ctx, trService *transaction.TransactionService) error {
+	var transaction models.Transaction
+	if err := c.BodyParser(&transaction); err != nil {
+		return c.Status(400).SendString("Invalid request body")
+	}
+
+	if transaction.FromClientID <= 0 || transaction.ToClientID <= 0 || transaction.Amount <= 0 {
+		return c.Status(400).SendString("Invalid transaction details")
+	}
+
+	if transaction.FromClientID == transaction.ToClientID {
+		return c.Status(400).SendString("Cannot transfer to the same client")
+	}
+
+	if err := trService.TransferMoney(context.Background(), transaction); err != nil {
+		return c.Status(500).SendString("Error processing transaction")
+	}
+
+	return c.Status(200).SendString("Transaction submitted successfully")
 }
 
 

@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     from_client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     to_client_id INT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     amount NUMERIC(15, 2) NOT NULL CHECK (amount > 0),
-    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP DEFAULT NULL
 );
