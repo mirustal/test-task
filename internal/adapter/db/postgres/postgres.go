@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose"
 
-	"bank-service/internal/config"
+	"bank-service/pkg/config"
 )
 
 const migrationDir = "db/migrations/postgres"
 
 type Storage struct {
-	db  *pgx.Conn
+	db  *pgxpool.Pool
 	log *slog.Logger
 }
 
@@ -25,34 +25,39 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Storage, e
 	log = log.With(slog.String("op", op))
 
 	url := dbStringConverter(cfg)
-	conn, err := pgx.Connect(ctx, url)
+
+	poolConfig, err := pgxpool.ParseConfig(url)
 	if err != nil {
-		log.Error("can`t connect db: ", "err", err)
+		log.Error("failed to parse db config: ", "err", err)
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	poolConfig.MaxConns = int32(cfg.Postgres.MaxConn)
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+
+	if err := pool.Ping(ctx); err != nil {
+		log.Error("failed to ping db: ", "err", err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	if err := conn.Ping(ctx); err != nil {
-		log.Error("failed ping db: ", "err", err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	if err := applyMigrations(ctx, conn, migrationDir); err != nil {
+	if err := applyMigrations(ctx, pool, migrationDir); err != nil {
 		log.Error("can't migrate up: ", "err", err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return &Storage{
-		db:  conn,
+		db:  pool,
 		log: log,
 	}, nil
 }
 
 func (s *Storage) Close(ctx context.Context) error {
-	return s.db.Close(ctx)
+	s.db.Close()
+	return nil
 }
 
-func applyMigrations(ctx context.Context, conn *pgx.Conn, migrationsDir string) error {
-	db := stdlib.OpenDB(*conn.Config())
+func applyMigrations(ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
+	db := stdlib.OpenDBFromPool(pool)
 	defer db.Close()
 
 	return goose.Up(db, migrationsDir)

@@ -8,16 +8,17 @@ import (
 
 	"bank-service/internal/adapter/db/postgres"
 	"bank-service/internal/api"
-	"bank-service/internal/config"
-	"bank-service/internal/logger"
 	"bank-service/internal/modules/client"
 	"bank-service/internal/modules/transaction"
+	mockdb "bank-service/internal/utils/mockDB"
+	"bank-service/pkg/config"
+	"bank-service/pkg/logger"
 )
 
 func main() {
 	cfg := config.MustLoad()
 	printConfig(cfg)
-	
+
 	ctx := context.Background()
 
 	mylog := logger.SetupLogger(cfg.LogType)
@@ -27,6 +28,10 @@ func main() {
 		log.Fatal("failed to coonect db")
 	}
 	defer storage.Close(ctx)
+	if err := mockdb.SeedDataBase(ctx, storage); err != nil {
+		mylog.Error("can't create mock for DB")
+	}
+	
 
 	clService := client.New(mylog, storage, storage)
 	trService := transaction.New(mylog, storage, storage)
@@ -36,9 +41,8 @@ func main() {
 
 }
 
-
 func printConfig(cfg *config.Config) {
-	time.Sleep(3 * time.Second) 
+	time.Sleep(3 * time.Second)
 
 	log.Println("-------------------------------------------------------")
 	log.Println("Starting service:")

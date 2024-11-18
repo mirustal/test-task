@@ -7,6 +7,7 @@ postgres:
   user: "bank-user"
   password: "secretpass"
   db_name: "bank"
+  maxconn: 100
 
 rabbitmq:
   host: "rabbitmq"
@@ -20,6 +21,3 @@ rest:
   write_timeout: 10s
   idle_timeout: 10s
 
-mock_db:
-  user_count: 10
-  msg_count: 10
